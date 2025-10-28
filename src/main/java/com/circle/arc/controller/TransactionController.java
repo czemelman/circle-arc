@@ -6,6 +6,7 @@ import com.circle.arc.service.TransactionService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -16,6 +17,7 @@ import java.util.Map;
 
 /**
  * REST Controller for transaction operations
+ * Compliant with coding standards: handles Either return types, single return
  */
 @Slf4j
 @RestController
@@ -27,44 +29,52 @@ public class TransactionController {
 
     /**
      * Send a transaction to transfer ARC tokens
+     * Complies with Rule 3.1: Single return statement
      *
      * @param request Transaction request containing recipient and amount
      * @return Transaction response with hash and status
      */
     @PostMapping("/send")
-    public ResponseEntity<TransactionResponse> sendTransaction(
-            @Valid @RequestBody TransactionRequest request) {
-        try {
-            log.info("Sending transaction: {} ARC to {}", request.getAmount(), request.getToAddress());
-            TransactionResponse response = transactionService.sendTransaction(request);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to send transaction: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to send transaction: " + e.getMessage());
-        }
+    public ResponseEntity<?> sendTransaction(@Valid @RequestBody TransactionRequest request) {
+        log.info("Sending transaction: {} ARC to {}", request.getAmount(), request.getToAddress());
+
+        return transactionService.sendTransaction(request)
+            .fold(
+                error -> {
+                    log.error("Failed to send transaction: {}", error.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+                },
+                response -> {
+                    log.info("Transaction sent successfully: {}", response.getTransactionHash());
+                    return ResponseEntity.ok(response);
+                }
+            );
     }
 
     /**
      * Get transaction status by hash
+     * Complies with Rule 3.1: Single return statement
      *
      * @param transactionHash Transaction hash to look up
      * @return Transaction details and status
      */
     @GetMapping("/status/{transactionHash}")
-    public ResponseEntity<TransactionResponse> getTransactionStatus(
-            @PathVariable String transactionHash) {
-        try {
-            log.info("Getting status for transaction: {}", transactionHash);
-            TransactionResponse response = transactionService.getTransactionStatus(transactionHash);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to get transaction status: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to get transaction status: " + e.getMessage());
-        }
+    public ResponseEntity<?> getTransactionStatus(@PathVariable String transactionHash) {
+        log.info("Getting status for transaction: {}", transactionHash);
+
+        return transactionService.getTransactionStatus(transactionHash)
+            .fold(
+                error -> {
+                    log.error("Failed to get transaction status: {}", error.getMessage());
+                    return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(error);
+                },
+                response -> ResponseEntity.ok(response)
+            );
     }
 
     /**
      * Estimate gas for a transaction
+     * Complies with Rule 3.1: Single return statement
      *
      * @param from Sender address
      * @param to Recipient address
@@ -72,21 +82,25 @@ public class TransactionController {
      * @return Estimated gas required
      */
     @GetMapping("/estimate-gas")
-    public ResponseEntity<Map<String, Object>> estimateGas(
+    public ResponseEntity<?> estimateGas(
             @RequestParam String from,
             @RequestParam String to,
             @RequestParam BigDecimal amount) {
-        try {
-            BigInteger gasEstimate = transactionService.estimateGas(from, to, amount);
-            Map<String, Object> response = new HashMap<>();
-            response.put("estimatedGas", gasEstimate.toString());
-            response.put("from", from);
-            response.put("to", to);
-            response.put("amount", amount);
-            return ResponseEntity.ok(response);
-        } catch (Exception e) {
-            log.error("Failed to estimate gas: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to estimate gas: " + e.getMessage());
-        }
+
+        return transactionService.estimateGas(from, to, amount)
+            .fold(
+                error -> {
+                    log.error("Failed to estimate gas: {}", error.getMessage());
+                    return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(error);
+                },
+                gasEstimate -> {
+                    final Map<String, Object> response = new HashMap<>();
+                    response.put("estimatedGas", gasEstimate.toString());
+                    response.put("from", from);
+                    response.put("to", to);
+                    response.put("amount", amount);
+                    return ResponseEntity.ok(response);
+                }
+            );
     }
 }
